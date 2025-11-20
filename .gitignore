@@ -55,3 +55,7 @@ uv.lock
 vis/
 vis_token_image_similarity/
 *.log
+.venv
+workspace/*
+.claude/*
+remote_code/*
