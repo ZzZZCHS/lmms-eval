@@ -243,7 +243,7 @@ class LLaMAVid(lmms):
             cur_prompt = contexts
             with torch.inference_mode():
                 self.model.update_prompt([[cur_prompt]])
-                output_ids = self.model.generate(input_ids, images=video, do_sample=True, temperature=0.2, max_new_tokens=1024, use_cache=True, stopping_criteria=[stopping_criteria])
+                output_ids = self.model.generate(input_ids, images=video, do_sample=True, temperature=0.2, max_new_tokens=1024, use_cache=True, stopping_criteria=[stopping_criteria], return_indices=True, **gen_kwargs)
 
             input_token_len = input_ids.shape[1]
             n_diff_input_output = (input_ids != output_ids[:, :input_token_len]).sum().item()

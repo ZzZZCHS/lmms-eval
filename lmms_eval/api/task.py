@@ -1474,9 +1474,12 @@ class ConfigurableTask(Task):
     def process_results(self, doc, results, full_docs=None):
         if self.OUTPUT_TYPE == "generate_until":
             if isinstance(results, list) and isinstance(results[0], list):
-                results = [res.strip() for res in results[0]]
-            else:
-                results = [res.strip() for res in results]
+                results = results[0]
+            if not results[-1] == 'add_outputs':
+                if isinstance(results, list) and isinstance(results[0], list):
+                    results = [res.strip() for res in results[0]]
+                else:
+                    results = [res.strip() for res in results]
 
         kwargs = {}
         if full_docs is not None:

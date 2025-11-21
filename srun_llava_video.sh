@@ -2,7 +2,7 @@
 
 # export DECORD_LOG_LEVEL=error
 
-debug=false
+debug=true
 
 account_name="yangli1-lab" # yangli1-lab, bweng-lab
 partition_name="nova" # nova, interactive, scavenger(h200)
@@ -30,8 +30,8 @@ else
   log_dir="./logs/${exp_name}"
   # log_dir="./logs/random_25"
   # log_dir="./logs/density_1"
-  # tasks="videomme,mlvu_dev,longvideobench_val_v,mvbench"
-  tasks="mvbench"
+  tasks="videomme,mlvu_dev,longvideobench_val_v,mvbench"
+  # tasks="mvbench"
   limit=1000000000
   cpu_memory="64G"
 fi

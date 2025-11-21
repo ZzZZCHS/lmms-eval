@@ -177,6 +177,10 @@ class Llava_OneVision(lmms):
             self.model.to(self._device)
             self._rank = 0
             self._world_size = 1
+        #################################
+        self.total_cuda_time =0
+        self.max_mem=0
+        ##################################
 
     @property
     def config(self):
@@ -371,7 +375,13 @@ class Llava_OneVision(lmms):
                     new_list.append(j)
         return new_list
 
-    def load_video(self, video_path, max_frames_num):
+    def load_video(self, video_path, max_frames_num, return_frame_idx=False):
+        #########################################################
+        # idx=get_counter()
+        # with open('video_info.txt', 'a') as f:
+        #     f.write(f"{idx},{video_path}\n")
+        #################################################################
+
         if type(video_path) == str:
             vr = VideoReader(video_path, ctx=cpu(0))
         else:
@@ -380,10 +390,13 @@ class Llava_OneVision(lmms):
         uniform_sampled_frames = np.linspace(0, total_frame_num - 1, max_frames_num, dtype=int)
         frame_idx = uniform_sampled_frames.tolist()
         spare_frames = vr.get_batch(frame_idx).asnumpy()
+        if return_frame_idx:
+            return spare_frames, frame_idx
         return spare_frames  # (frames, height, width, channels)
 
     def generate_until(self, requests: List[Instance]) -> List[str]:
         res = []
+        other_res = []
 
         def _collate(x):
             # the negative sign on len(toks) sorts descending - this has a few advantages:
@@ -406,6 +419,14 @@ class Llava_OneVision(lmms):
 
         origin_image_aspect_ratio = getattr(self._config, "image_aspect_ratio", None)
 
+        # with torch.profiler.profile(
+        #     activities=[
+        #         torch.profiler.ProfilerActivity.CPU,
+        #         torch.profiler.ProfilerActivity.CUDA,
+        #     ],
+        #     # This schedule tells the profiler to average over 3 stable runs
+        #     schedule=torch.profiler.schedule(wait=2, warmup=2, active=10, repeat=1)
+        # ) as prof:
         for chunk in chunks:
             batched_contexts, all_gen_kwargs, batched_doc_to_visual, batched_doc_id, batched_task, batched_split = zip(*chunk)
             task = batched_task[0]
@@ -465,7 +486,7 @@ class Llava_OneVision(lmms):
                         image_tensor = []
                         try:
                             if self.video_decode_backend == "decord":
-                                frames = self.load_video(visual, self.max_frames_num)
+                                frames, frame_idx = self.load_video(visual, self.max_frames_num, return_frame_idx=True)
                             elif self.video_decode_backend == "pyav":
                                 frames = read_video_pyav(visual[0], num_frm=self.max_frames_num)
                             frames = self._image_processor.preprocess(frames, return_tensors="pt")["pixel_values"].half().cuda()
@@ -549,21 +570,49 @@ class Llava_OneVision(lmms):
                 gen_kwargs.pop("top_p", None)
                 gen_kwargs.pop("top_k", None)
             try:
-                with torch.inference_mode():
-                    cont = self.model.generate(input_ids, attention_mask=attention_masks, pad_token_id=pad_token_ids, images=image_tensor, use_cache=self.use_cache, **gen_kwargs)
+                ########################################################
+                torch.cuda.reset_peak_memory_stats()
+                gen_start_event = torch.cuda.Event(enable_timing=True)
+                gen_end_event = torch.cuda.Event(enable_timing=True)
+                torch.cuda.synchronize()
+                gen_start_event.record()
+                #######################################################
+                with torch.inference_mode() and torch.profiler.record_function("model forward"):
+                    cont, remaining_indices, predict_scores = self.model.generate(input_ids, attention_mask=attention_masks, pad_token_id=pad_token_ids, images=image_tensor, use_cache=self.use_cache, return_indices=True, batched_doc_id=batched_doc_id, **gen_kwargs)
                     # cont = self.model.generate(qwen_input_ids, pad_token_id=pad_token_ids, images=image_tensor, use_cache=self.use_cache, **gen_kwargs)
+                #############################################################
+                # prof.step()
+                gen_end_event.record()
+                torch.cuda.synchronize()
+                gen_time = gen_start_event.elapsed_time(gen_end_event) / 1000.0  # seconds
+                gen_max_mem = torch.cuda.max_memory_allocated() / 1024 / 1024  # MB
 
+                self.total_cuda_time += gen_time
+                self.max_mem=max(gen_max_mem,self.max_mem)
+                # print("total_time",self.total_cuda_time,"max_mem",self.max_mem)
+                ###########################################################
                 text_outputs = self.tokenizer.batch_decode(cont, skip_special_tokens=True)
+                
+                choice_ids = self.tokenizer.convert_tokens_to_ids(["A", "B", "C", "D"])
+                first_token_logits = predict_scores[0]
+                choice_logits = first_token_logits[:, choice_ids]
+                choice_probs = choice_logits.softmax(dim=-1)
+                # assert choice_probs.max(dim=-1)[1][0].item() == ord(text_outputs[0]) - ord('A'), breakpoint()
+                choice_probs = choice_probs.detach().cpu().tolist()
             except Exception as e:
                 raise e
 
             text_outputs = [response.strip() for response in text_outputs]
-            res.extend(text_outputs)
+            all_outputs = [text_outputs, remaining_indices, frame_idx, visual, choice_probs, "add_outputs"]
+            # res.extend(text_outputs)
+            # other_res.append(other_outputs)
+            res.append(all_outputs)
             self.cache_hook.add_partial("generate_until", (context, gen_kwargs), text_outputs)
             pbar.update(1)
             # reorder this group of results back to original unsorted form
+        # print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=20))
+        # print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=20))
         res = re_ords.get_original(res)
-
         pbar.close()
         return res
 

@@ -2,14 +2,14 @@
 
 # export DECORD_LOG_LEVEL=error
 
-debug=false
+debug=true
 
 account_name="yangli1-lab" # yangli1-lab, bweng-lab
 partition_name="nova" # nova, interactive, scavenger(h200)
 gpu_type="a100" # a100, h200, l40s
 gpu_num=1
 
-base_scale=0.01
+base_scale=0.10
 importance_a=750.0
 importance_distance_type="l2" # l2, cosine
 base_scale_p=$(awk -v scale="$base_scale" 'BEGIN { print scale * 100 }')

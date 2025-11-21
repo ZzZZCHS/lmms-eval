@@ -613,7 +613,7 @@ class Llava_OneVision(lmms):
                 # prof.step()
                 gen_end_event.record()
                 torch.cuda.synchronize()
-                gen_time = gen_start_event.elapsed_time(gen_end_event) / 1000.0  # 秒
+                gen_time = gen_start_event.elapsed_time(gen_end_event) / 1000.0  # seconds
                 gen_max_mem = torch.cuda.max_memory_allocated() / 1024 / 1024  # MB
 
                 self.total_cuda_time += gen_time

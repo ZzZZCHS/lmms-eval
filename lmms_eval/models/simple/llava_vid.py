@@ -512,11 +512,12 @@ class LlavaVid(lmms):
                     modalities="video",
                     use_cache=self.use_cache,
                     stopping_criteria=[stopping_criteria],
-                    do_sample=True if gen_kwargs["temperature"] > 0 else False,
-                    temperature=gen_kwargs["temperature"],
-                    top_p=gen_kwargs["top_p"],
-                    num_beams=gen_kwargs["num_beams"],
-                    max_new_tokens=gen_kwargs["max_new_tokens"],
+                    # do_sample=True if gen_kwargs["temperature"] > 0 else False,
+                    # temperature=gen_kwargs["temperature"],
+                    # top_p=gen_kwargs["top_p"],
+                    # num_beams=gen_kwargs["num_beams"],
+                    # max_new_tokens=gen_kwargs["max_new_tokens"],
+                    **gen_kwargs
                 )
                 # output_ids_2 = self.model.generate(inputs=input_ids, images=videos, attention_mask=attention_masks, modalities="video", do_sample=False, max_new_tokens=50,stopping_criteria=[stopping_criteria])
                 # output_ids = self.model.generate(inputs=input_ids, images=videos, attention_mask=attention_masks, modalities="video", do_sample=True, temperature=0.2, max_new_tokens=50,use_cache=True)
