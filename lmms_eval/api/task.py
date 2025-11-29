@@ -1015,13 +1015,21 @@ class ConfigurableTask(Task):
 
                     # Link cache_path to cache_dir if needed.
                     if create_link:
-                        if not os.path.exists(cache_dir) or os.path.islink(cache_dir):
+                        try:
+                            # If an old symlink exists, remove it
                             if os.path.islink(cache_dir):
                                 os.remove(cache_dir)
                                 eval_logger.info(f"Removed existing symbolic link: {cache_dir}")
-                            # Create a new symbolic link
+
+                            # Attempt to create the symlink
                             os.symlink(cache_path, cache_dir)
                             eval_logger.info(f"Symbolic link created successfully: {cache_path} -> {cache_dir}")
+
+                        except FileExistsError:
+                            # Another process created it first
+                            eval_logger.info(
+                                f"Symbolic link already created by another process: {cache_dir}"
+                            )
 
                 accelerator.wait_for_everyone()
                 dataset_kwargs.pop("cache_dir")

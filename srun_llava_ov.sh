@@ -2,15 +2,15 @@
 
 # export DECORD_LOG_LEVEL=error
 
-debug=true
+debug=false
 
 account_name="yangli1-lab" # yangli1-lab, bweng-lab
 partition_name="nova" # nova, interactive, scavenger(h200)
 gpu_type="a100" # a100, h200, l40s
 gpu_num=1
 
-base_scale=0.10
-importance_a=750.0
+base_scale=0.01
+importance_a=500.0
 importance_distance_type="l2" # l2, cosine
 base_scale_p=$(awk -v scale="$base_scale" 'BEGIN { print scale * 100 }')
 interval_separate_method="consecutive_difference_change" # consecutive_difference_change, single_interval
@@ -18,7 +18,12 @@ token_merge_alpha=2 # -1 means no token merge, 2 means importance-based weighted
 random_sampling_method="pivotal" # pivotal, multinomial
 random_sampling_seed=4
 temporal_sigma=16.0
-exp_name="interval_${interval_separate_method}_${importance_distance_type}_a${importance_a}_merge${token_merge_alpha}_${random_sampling_method}_seed${random_sampling_seed}_Tsigma${temporal_sigma}_${base_scale_p}"
+# diff_threshold=160
+diff_threshold=110
+echo "diff_threshold: $diff_threshold"
+diff_change_threshold=$1 # 70
+diff_change_percent_threshold=$2 # 0.35
+exp_name="interval_${interval_separate_method}_${importance_distance_type}_a${importance_a}_merge${token_merge_alpha}_${random_sampling_method}_seed${random_sampling_seed}_Tsigma${temporal_sigma}_diff-${diff_threshold}-${diff_change_threshold}-${diff_change_percent_threshold}_${base_scale_p}"
 # exp_name="original"
 
 if [ $debug = true ]; then
@@ -37,12 +42,15 @@ else
 fi
 echo "Logging to $log_dir"
 
+start_time=$(date +%s)
+echo "Start time: $(date)"
+
 srun --account="$account_name" --time=24:00:00 --nodes=1 --cpus-per-task=8 --mem=${cpu_memory} --partition="$partition_name" --gres=gpu:"$gpu_type":"$gpu_num" \
   accelerate launch --num_processes=1 \
   -m lmms_eval \
   --model llava_onevision \
   --model_args pretrained=lmms-lab/llava-onevision-qwen2-7b-ov,conv_template=qwen_1_5,model_name=llava_qwen,attn_implementation=flash_attention_2 \
-  --gen_kwargs max_new_tokens=16,temperature=0,top_p=1.0,num_beams=1,do_sample=False,base_scale=${base_scale},importance_a=${importance_a},importance_distance_type=${importance_distance_type},interval_separate_method=${interval_separate_method},token_merge_alpha=${token_merge_alpha},random_sampling_method=${random_sampling_method},random_sampling_seed=${random_sampling_seed},temporal_sigma=${temporal_sigma} \
+  --gen_kwargs max_new_tokens=16,temperature=0,top_p=1.0,num_beams=1,do_sample=False,base_scale=${base_scale},importance_a=${importance_a},importance_distance_type=${importance_distance_type},interval_separate_method=${interval_separate_method},token_merge_alpha=${token_merge_alpha},random_sampling_method=${random_sampling_method},random_sampling_seed=${random_sampling_seed},temporal_sigma=${temporal_sigma},diff_threshold=${diff_threshold},diff_change_threshold=${diff_change_threshold},diff_change_percent_threshold=${diff_change_percent_threshold} \
   --tasks $tasks \
   --batch_size 1 \
   --log_samples \
@@ -50,4 +58,16 @@ srun --account="$account_name" --time=24:00:00 --nodes=1 --cpus-per-task=8 --mem
   --output_path $log_dir \
   --limit $limit
 
-echo "Evaluation completed. Logs are saved in $log_dir."
+end_time=$(date +%s)
+echo "End time: $(date)"
+
+elapsed=$((end_time - start_time))
+
+# convert seconds → HH:MM:SS
+hours=$((elapsed / 3600))
+minutes=$(((elapsed % 3600) / 60))
+seconds=$((elapsed % 60))
+
+printf "Total runtime: %02d:%02d:%02d (HH:MM:SS)\n" $hours $minutes $seconds
+
+echo "llava-ov-7b evaluation completed. Logs are saved in $log_dir."
