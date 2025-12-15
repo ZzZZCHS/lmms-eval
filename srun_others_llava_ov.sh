@@ -4,27 +4,35 @@
 
 debug=false
 
-account_name="yangli1-lab" # yangli1-lab, bweng-lab
+account_name="bweng-lab" # yangli1-lab, bweng-lab
 partition_name="nova" # nova, interactive, scavenger(h200)
 gpu_type="a100" # a100, h200, l40s
 gpu_num=1
 
-base_scale=$1
-# importance_a=800
-# importance_distance_type="l2" # l2, cosine
+# if has $1, assign to compression_method, else default to "original"
+# before assigning to compression_method, check if $1 is in the allowed list, exit if not
+# original, random, interval, vidcom2, fastvid, prunevid, dycoke
+allowed_methods=("original" "random" "interval" "vidcom2" "fastvid" "prunevid" "dycoke")
+if [ -z "$1" ]; then
+  echo "No compression_method argument supplied. Using default compression_method=original"
+  compression_method="original"
+else
+  compression_method="$1"
+  if [[ ! " ${allowed_methods[@]} " =~ " ${compression_method} " ]]; then
+    echo "Error: compression_method '$compression_method' is not in the allowed list: ${allowed_methods[*]}"
+    exit 1
+  fi
+fi
+
+# if has $2, assign to base_scale, else default to 1.0
+if [ -z "$2" ]; then
+  echo "No base_scale argument supplied. Using default base_scale=1.0"
+  base_scale=1.0
+else
+  base_scale=$2
+fi
 base_scale_p=$(awk -v scale="$base_scale" 'BEGIN { print scale * 100 }')
-# interval_separate_method="consecutive_difference_change" # consecutive_difference_change, single_interval
-# token_merge_alpha=2 # -1 means no token merge, 2 means importance-based weighted token merge
-# random_sampling_method="pivotal" # pivotal, multinomial
-# random_sampling_seed=$1 # 3141592653589793, 2718281828459045, 1644934089375537, 9182736455463721, 1357913579135791, 8112963841460663, 4876659872345019, 7568372919931127, 9923457712349835, 5521810983345569, 6748391029384751, 314159, 271821, 918273, 135791, 547921, 889331, 42
-# temporal_sigma=0 # 16
-# diff_threshold=110
-# echo "diff_threshold: $diff_threshold"
-# diff_change_threshold=70 # 70
-# diff_change_percent_threshold=0.4 # 0.35
-# exp_name="interval_${interval_separate_method}_${importance_distance_type}_a${importance_a}_merge${token_merge_alpha}_${random_sampling_method}_seed${random_sampling_seed}_Tsigma${temporal_sigma}_diff-${diff_threshold}-${diff_change_threshold}-${diff_change_percent_threshold}_${base_scale_p}"
-# exp_name="original"
-exp_name="fastvid_${base_scale_p}"
+exp_name="${compression_method}_${base_scale_p}"
 
 if [ $debug = true ]; then
   log_dir="./logs_debug/${exp_name}"
@@ -50,7 +58,7 @@ srun --account="$account_name" --time=24:00:00 --nodes=1 --cpus-per-task=8 --mem
   -m lmms_eval \
   --model llava_onevision \
   --model_args pretrained=lmms-lab/llava-onevision-qwen2-7b-ov,conv_template=qwen_1_5,model_name=llava_qwen,attn_implementation=flash_attention_2 \
-  --gen_kwargs max_new_tokens=16,temperature=0,top_p=1.0,num_beams=1,do_sample=False,base_scale=${base_scale} \
+  --gen_kwargs max_new_tokens=16,temperature=0,top_p=1.0,num_beams=1,do_sample=False,base_scale=${base_scale},compression_method=${compression_method} \
   --tasks $tasks \
   --batch_size 1 \
   --log_samples \

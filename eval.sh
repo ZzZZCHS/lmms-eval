@@ -40,3 +40,6 @@ accelerate launch --num_processes=1 \
   # pip install httpx==0.23.3 numpy==1.26.4 opencv-python==4.11.0.86 matplotlib==3.10.7
   # wget https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu12torch2.8cxx11abiTRUE-cp312-cp312-linux_x86_64.whl
   # pip install flash_attn-2.8.3+cu12torch2.8cxx11abiTRUE-cp312-cp312-linux_x86_64.whl
+
+
+  # (transformers-4.57.1)
