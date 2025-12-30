@@ -2,9 +2,10 @@
 
 # export DECORD_LOG_LEVEL=error
 
-debug=false
+# account_name="yangli1-lab" # yangli1-lab, bweng-lab
+account_name=$(./select_account.sh)
+echo "Selected account: $account_name"
 
-account_name="bweng-lab" # yangli1-lab, bweng-lab
 partition_name="nova" # nova, interactive, scavenger(h200)
 gpu_type="a100" # a100, h200, l40s
 gpu_num=1
@@ -12,7 +13,7 @@ gpu_num=1
 # if has $1, assign to compression_method, else default to "original"
 # before assigning to compression_method, check if $1 is in the allowed list, exit if not
 # original, random, interval, vidcom2, fastvid, prunevid, dycoke
-allowed_methods=("original" "random" "interval" "vidcom2" "fastvid" "prunevid" "dycoke")
+allowed_methods=("original" "random" "interval" "vidcom2" "fastvid" "prunevid" "dycoke" "visionzip")
 if [ -z "$1" ]; then
   echo "No compression_method argument supplied. Using default compression_method=original"
   compression_method="original"
@@ -31,6 +32,15 @@ if [ -z "$2" ]; then
 else
   base_scale=$2
 fi
+
+# if has --debug flag, assign to debug, else default to false
+debug=false
+for arg in "$@"
+do
+  if [ "$arg" == "--debug" ]; then
+    debug=true
+  fi
+done
 
 base_scale_p=$(awk -v scale="$base_scale" 'BEGIN { print scale * 100 }')
 exp_name="${compression_method}_${base_scale_p}"

@@ -2,9 +2,12 @@
 
 # export DECORD_LOG_LEVEL=error
 
-debug=true
+debug=false
 
-account_name="yangli1-lab" # yangli1-lab, bweng-lab
+# account_name="yangli1-lab" # yangli1-lab, bweng-lab
+account_name=$(./select_account.sh)
+echo "Selected account: $account_name"
+
 partition_name="nova" # nova, interactive, scavenger(h200)
 gpu_type="a100" # a100, h200, l40s
 gpu_num=1
