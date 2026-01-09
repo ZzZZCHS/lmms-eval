@@ -14,7 +14,7 @@ gpu_num=1
 
 compression_method="interval"
 base_scale=$1
-importance_a=800
+importance_a=-1
 importance_distance_type="l2" # l2, cosine
 base_scale_p=$(awk -v scale="$base_scale" 'BEGIN { print scale * 100 }')
 interval_separate_method="consecutive_difference_change" # consecutive_difference_change, single_interval

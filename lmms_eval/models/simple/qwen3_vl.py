@@ -58,8 +58,9 @@ class Qwen3_VL(lmms):
         **kwargs,
     ) -> None:
         super().__init__()
+        # breakpoint()
         # Do not use kwargs for now
-        assert kwargs == {}, f"Unexpected kwargs: {kwargs}"
+        # assert kwargs == {}, f"Unexpected kwargs: {kwargs}"
 
         # Validate attention implementation
         valid_attn_implementations = [None, "flash_attention_2", "sdpa", "eager"]
@@ -97,6 +98,8 @@ class Qwen3_VL(lmms):
         match = re.search(r"A\d+B", pretrained)
         model_fn = Qwen3VLMoeForConditionalGeneration if match else Qwen3VLForConditionalGeneration
         self._model = model_fn.from_pretrained(pretrained, **model_kwargs).eval()
+        self._model.model.set_my_kwargs(kwargs=kwargs)
+        
         self.max_pixels = max_pixels
         self.min_pixels = min_pixels
         self.max_num_frames = max_num_frames

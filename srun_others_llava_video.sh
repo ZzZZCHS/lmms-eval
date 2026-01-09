@@ -13,7 +13,7 @@ gpu_num=1
 # if has $1, assign to compression_method, else default to "original"
 # before assigning to compression_method, check if $1 is in the allowed list, exit if not
 # original, random, interval, vidcom2, fastvid, prunevid, dycoke
-allowed_methods=("original" "random" "interval" "vidcom2" "fastvid" "prunevid" "dycoke" "visionzip")
+allowed_methods=("original" "random" "interval" "vidcom2" "fastvid" "prunevid" "dycoke" "visionzip" "fastv")
 if [ -z "$1" ]; then
   echo "No compression_method argument supplied. Using default compression_method=original"
   compression_method="original"
@@ -34,16 +34,25 @@ else
 fi
 
 # if has --debug flag, assign to debug, else default to false
+# if has --fastv_R=xxx flag, assign to fastv_R
 debug=false
+fastv_R=1.0
 for arg in "$@"
 do
   if [ "$arg" == "--debug" ]; then
     debug=true
+  elif [[ "$arg" == --fastv_R=* ]]; then
+    fastv_R="${arg#--fastv_R=}"
   fi
 done
 
 base_scale_p=$(awk -v scale="$base_scale" 'BEGIN { print scale * 100 }')
-exp_name="${compression_method}_${base_scale_p}"
+fastv_R_p=$(awk -v scale="$fastv_R" 'BEGIN { print scale * 100 }')
+if [ "$fastv_R_p" == "100" ]; then
+  exp_name="${compression_method}_${base_scale_p}"
+else
+  exp_name="${compression_method}_${base_scale_p}_R${fastv_R_p}"
+fi
 
 if [ $debug = true ]; then
   log_dir="./logs_debug/${exp_name}"
@@ -70,7 +79,7 @@ srun --account="$account_name" --time=24:00:00 --nodes=1 --cpus-per-task=8 --mem
   -m lmms_eval \
   --model llava_vid \
   --model_args pretrained=lmms-lab/LLaVA-Video-7B-Qwen2,conv_template=qwen_1_5,max_frames_num=64,mm_spatial_pool_mode=average,attn_implementation=flash_attention_2 \
-  --gen_kwargs max_new_tokens=16,temperature=0,top_p=1.0,num_beams=1,do_sample=False,base_scale=${base_scale},compression_method=${compression_method} \
+  --gen_kwargs max_new_tokens=16,temperature=0,top_p=1.0,num_beams=1,do_sample=False,base_scale=${base_scale},compression_method=${compression_method},fastv_R=${fastv_R} \
   --tasks $tasks \
   --batch_size 1 \
   --log_samples \
