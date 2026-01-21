@@ -129,7 +129,7 @@ class Llava_OneVision(lmms):
         llava_model_args["overwrite_config"] = overwrite_config
         try:
             # Try to load the model with the multimodal argument
-            self._tokenizer, self._model, self._image_processor, self._max_length = load_pretrained_model(pretrained, None, model_name, device_map=self.device_map, **llava_model_args)
+            self._tokenizer, self._model, self._image_processor, self._max_length = load_pretrained_model(pretrained, None, model_name, device_map=self.device_map, **llava_model_args) # change from device_map=self.device_map to None for deepspeed zero3
         except TypeError:
             # for older versions of LLaVA that don't have multimodal argument
             llava_model_args.pop("multimodal", None)
@@ -143,6 +143,7 @@ class Llava_OneVision(lmms):
         self.use_cache = use_cache
         self.truncate_context = truncate_context
         assert self.batch_size_per_gpu == 1, "Llava currently does not support batched generation. See https://github.com/haotian-liu/LLaVA/issues/754. HF Llava also has this issue."
+
 
         if accelerator.num_processes > 1:
             assert accelerator.distributed_type in [DistributedType.FSDP, DistributedType.MULTI_GPU, DistributedType.DEEPSPEED], "Unsupported distributed type provided. Only DDP and FSDP are supported."
@@ -424,8 +425,10 @@ class Llava_OneVision(lmms):
         #         torch.profiler.ProfilerActivity.CPU,
         #         torch.profiler.ProfilerActivity.CUDA,
         #     ],
-        #     # This schedule tells the profiler to average over 3 stable runs
-        #     schedule=torch.profiler.schedule(wait=2, warmup=2, active=10, repeat=1)
+        #     schedule=torch.profiler.schedule(wait=2, warmup=2, active=30, repeat=1),
+        #     record_shapes=False,
+        #     with_stack=False,
+        #     profile_memory=False
         # ) as prof:
         for chunk in chunks:
             batched_contexts, all_gen_kwargs, batched_doc_to_visual, batched_doc_id, batched_task, batched_split = zip(*chunk)
@@ -610,8 +613,9 @@ class Llava_OneVision(lmms):
             self.cache_hook.add_partial("generate_until", (context, gen_kwargs), text_outputs)
             pbar.update(1)
             # reorder this group of results back to original unsorted form
-        # print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=20))
-        # print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=20))
+        
+        # print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=50))
+        # print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=50))
         res = re_ords.get_original(res)
         pbar.close()
         return res

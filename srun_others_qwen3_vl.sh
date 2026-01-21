@@ -71,7 +71,7 @@ echo "Logging to $log_dir"
 start_time=$(date +%s)
 echo "Start time: $(date)"
 
-srun --account="$account_name" --time=2-00:00:00 --nodes=1 --cpus-per-task=8 --mem=${cpu_memory} --partition="$partition_name" --gres=gpu:"$gpu_type":"$gpu_num" \
+srun --account="$account_name" --time=1-00:00:00 --nodes=1 --cpus-per-task=8 --mem=${cpu_memory} --partition="$partition_name" --gres=gpu:"$gpu_type":"$gpu_num" \
   accelerate launch --num_processes="$gpu_num" \
   -m lmms_eval \
   --model qwen3_vl \

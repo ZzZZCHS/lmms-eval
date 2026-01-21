@@ -59,3 +59,8 @@ vis_token_image_similarity/
 workspace/*
 .claude/*
 remote_code/*
+fastvid_remaining_token_nums.txt
+prunevid_remaining_token_nums.txt
+process_remaining_token_nums.py
+vidcom2_remaining_token_nums.txt
+visionzip_remaining_token_nums.txt

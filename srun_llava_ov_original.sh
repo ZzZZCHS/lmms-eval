@@ -1,6 +1,9 @@
 #!/bin/bash
 
 # export DECORD_LOG_LEVEL=error
+export DECORD_EOF_RETRY_MAX=100000
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
 
 debug=false
 for arg in "$@"
@@ -10,19 +13,16 @@ do
   fi
 done
 
-MAX_PIXELS=262144 #$((768 * 32 * 32))
-MIN_PIXELS=8192 #$((8 * 32 * 32))
-
-# account_name="yangli1-lab" # yangli1-lab, bweng-lab
-account_name=$(./select_account.sh)
+account_name="bweng-lab" # yangli1-lab, bweng-lab
+# account_name=$(./select_account.sh)
 echo "Selected account: $account_name"
 
 partition_name="nova" # nova, interactive, scavenger(h200)
 gpu_type="a100" # a100, h200, l40s
-gpu_num=1
+gpu_num=4
 
-compression_method="interval"
-base_scale=$1
+compression_method=""
+base_scale=1
 importance_a=800 # -1 for auto
 importance_distance_type="l2" # l2, cosine
 base_scale_p=$(awk -v scale="$base_scale" 'BEGIN { print scale * 100 }')
@@ -34,39 +34,40 @@ temporal_sigma=0 # 16
 diff_threshold=110
 diff_change_threshold=70 # 70
 diff_change_percent_threshold=0.4 # 0.35
-exp_name="${compression_method}_${interval_separate_method}_${importance_distance_type}_a${importance_a}_merge${token_merge_alpha}_${random_sampling_method}_seed${random_sampling_seed}_Tsigma${temporal_sigma}_diff-${diff_threshold}-${diff_change_threshold}-${diff_change_percent_threshold}_${base_scale_p}"
-# exp_name="original"
+# exp_name="${compression_method}_${interval_separate_method}_${importance_distance_type}_a${importance_a}_merge${token_merge_alpha}_${random_sampling_method}_seed${random_sampling_seed}_Tsigma${temporal_sigma}_diff-${diff_threshold}-${diff_change_threshold}-${diff_change_percent_threshold}_${base_scale_p}"
+model_size=$1
+exp_name="original"
 
 if [ $debug = true ]; then
   log_dir="./logs_debug/${exp_name}"
   tasks="videomme"
-  limit=100
-  cpu_memory="64G"
+  limit=40
+  cpu_memory="384G"
 else
   log_dir="./logs/${exp_name}"
   # log_dir="./logs/random_25"
   # log_dir="./logs/density_1"
   # tasks="videomme,mlvu_dev,longvideobench_val_v,mvbench"
-  # tasks="videomme,mlvu_dev,longvideobench_val_v,mvbench"
-  tasks="videomme"
+  # tasks="videomme"
+  tasks=$2
   limit=1000000000
-  cpu_memory="64G"
+  cpu_memory="384G"
 fi
 echo "Logging to $log_dir"
 
 start_time=$(date +%s)
 echo "Start time: $(date)"
 
-srun --account="$account_name" --time=1-00:00:00 --nodes=1 --cpus-per-task=8 --mem=${cpu_memory} --partition="$partition_name" --gres=gpu:"$gpu_type":"$gpu_num" \
+srun --account="$account_name" --time=24:00:00 --nodes=1 --cpus-per-task=8 --mem=${cpu_memory} --partition="$partition_name" --gres=gpu:"$gpu_type":"$gpu_num" \
   accelerate launch --num_processes="$gpu_num" \
   -m lmms_eval \
-  --model qwen3_vl \
-  --model_args pretrained=Qwen/Qwen3-VL-8B-Instruct,min_pixels=${MIN_PIXELS},max_pixels=${MAX_PIXELS},fps=2,max_num_frames=128,attn_implementation=flash_attention_2,base_scale=${base_scale},importance_a=${importance_a},importance_distance_type=${importance_distance_type},interval_separate_method=${interval_separate_method},token_merge_alpha=${token_merge_alpha},random_sampling_method=${random_sampling_method},random_sampling_seed=${random_sampling_seed},temporal_sigma=${temporal_sigma},diff_threshold=${diff_threshold},diff_change_threshold=${diff_change_threshold},diff_change_percent_threshold=${diff_change_percent_threshold},compression_method=${compression_method} \
-  --gen_kwargs max_new_tokens=16,temperature=0,top_p=1.0,num_beams=1,do_sample=False \
+  --model llava_onevision \
+  --model_args pretrained=lmms-lab/llava-onevision-qwen2-${model_size}-ov,conv_template=qwen_1_5,model_name=llava_qwen,attn_implementation=flash_attention_2 \
+  --gen_kwargs max_new_tokens=16,temperature=0,top_p=1.0,num_beams=1,do_sample=False,base_scale=${base_scale},importance_a=${importance_a},importance_distance_type=${importance_distance_type},interval_separate_method=${interval_separate_method},token_merge_alpha=${token_merge_alpha},random_sampling_method=${random_sampling_method},random_sampling_seed=${random_sampling_seed},temporal_sigma=${temporal_sigma},diff_threshold=${diff_threshold},diff_change_threshold=${diff_change_threshold},diff_change_percent_threshold=${diff_change_percent_threshold},compression_method=${compression_method} \
   --tasks $tasks \
   --batch_size 1 \
   --log_samples \
-  --log_samples_suffix qwen3_vl \
+  --log_samples_suffix llava_onevision \
   --output_path $log_dir \
   --limit $limit
 
@@ -82,4 +83,4 @@ seconds=$((elapsed % 60))
 
 printf "Total runtime: %02d:%02d:%02d (HH:MM:SS)\n" $hours $minutes $seconds
 
-echo "qwen3-vl-8b evaluation completed. Logs are saved in $log_dir."
+echo "llava-ov-$model_size evaluation completed. Logs are saved in $log_dir."

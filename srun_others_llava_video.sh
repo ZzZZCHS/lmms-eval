@@ -58,7 +58,7 @@ if [ $debug = true ]; then
   log_dir="./logs_debug/${exp_name}"
   tasks="videomme"
   limit=100
-  cpu_memory="64G"
+  cpu_memory="32G"
 else
   log_dir="./logs/${exp_name}"
   # log_dir="./logs/random_25"

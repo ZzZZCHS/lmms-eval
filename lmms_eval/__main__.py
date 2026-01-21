@@ -10,6 +10,11 @@ from functools import partial
 
 import numpy as np
 import torch
+
+# for deepspeed zero3
+# torch.set_autocast_enabled("cuda", True)
+# torch.set_autocast_dtype("cuda", torch.bfloat16)
+
 import yaml
 
 warnings.simplefilter("ignore", category=DeprecationWarning)

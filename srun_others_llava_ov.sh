@@ -1,14 +1,17 @@
 #!/bin/bash
 
 # export DECORD_LOG_LEVEL=error
+export DECORD_EOF_RETRY_MAX=100000
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
 
-# account_name="yangli1-lab" # yangli1-lab, bweng-lab
-account_name=$(./select_account.sh)
+account_name="bweng-lab" # yangli1-lab, bweng-lab
+# account_name=$(./select_account.sh)
 echo "Selected account: $account_name"
 
 partition_name="nova" # nova, interactive, scavenger(h200)
 gpu_type="a100" # a100, h200, l40s
-gpu_num=1
+gpu_num=1 # 4 for 72b
 
 # if has $1, assign to compression_method, else default to "original"
 # before assigning to compression_method, check if $1 is in the allowed list, exit if not
@@ -31,6 +34,12 @@ if [ -z "$2" ]; then
   base_scale=1.0
 else
   base_scale=$2
+fi
+
+model_size="7b"
+# if has $3, assign to model_size, else default to 7b
+if [ -n "$3" ]; then
+  model_size="$3"
 fi
 
 # if has --debug flag, assign to debug, else default to false
@@ -57,16 +66,17 @@ fi
 if [ $debug = true ]; then
   log_dir="./logs_debug/${exp_name}"
   tasks="videomme"
-  limit=100
-  cpu_memory="64G"
+  limit=12
+  cpu_memory="64G" # 384G for 72b
 else
   log_dir="./logs/${exp_name}"
   # log_dir="./logs/random_25"
   # log_dir="./logs/density_1"
-  tasks="videomme,mlvu_dev,longvideobench_val_v,mvbench"
-  # tasks="mvbench"
+  # tasks="videomme,mlvu_dev,longvideobench_val_v,mvbench"
+  # tasks="videomme"
+  tasks=$4
   limit=1000000000
-  cpu_memory="64G"
+  cpu_memory="64G" # 384G for 72b
 fi
 echo "Logging to $log_dir"
 
@@ -74,10 +84,10 @@ start_time=$(date +%s)
 echo "Start time: $(date)"
 
 srun --account="$account_name" --time=24:00:00 --nodes=1 --cpus-per-task=8 --mem=${cpu_memory} --partition="$partition_name" --gres=gpu:"$gpu_type":"$gpu_num" \
-  accelerate launch --num_processes=1 \
+  accelerate launch --num_processes="$gpu_num" \
   -m lmms_eval \
   --model llava_onevision \
-  --model_args pretrained=lmms-lab/llava-onevision-qwen2-7b-ov,conv_template=qwen_1_5,model_name=llava_qwen,attn_implementation=flash_attention_2 \
+  --model_args pretrained=lmms-lab/llava-onevision-qwen2-${model_size}-ov,conv_template=qwen_1_5,model_name=llava_qwen,attn_implementation=flash_attention_2 \
   --gen_kwargs max_new_tokens=16,temperature=0,top_p=1.0,num_beams=1,do_sample=False,base_scale=${base_scale},compression_method=${compression_method},fastv_R=${fastv_R} \
   --tasks $tasks \
   --batch_size 1 \
@@ -98,4 +108,4 @@ seconds=$((elapsed % 60))
 
 printf "Total runtime: %02d:%02d:%02d (HH:MM:SS)\n" $hours $minutes $seconds
 
-echo "llava-ov-7b evaluation completed. Logs are saved in $log_dir."
+echo "llava-ov-$model_size evaluation completed. Logs are saved in $log_dir."

@@ -3,6 +3,12 @@
 # export DECORD_LOG_LEVEL=error
 
 debug=false
+for arg in "$@"
+do
+  if [ "$arg" == "--debug" ]; then
+    debug=true
+  fi
+done
 
 # account_name="yangli1-lab" # yangli1-lab, bweng-lab
 account_name=$(./select_account.sh)
@@ -14,13 +20,13 @@ gpu_num=1
 
 compression_method="interval"
 base_scale=$1
-importance_a=-1
+importance_a=800 # -1 for auto
 importance_distance_type="l2" # l2, cosine
 base_scale_p=$(awk -v scale="$base_scale" 'BEGIN { print scale * 100 }')
 interval_separate_method="consecutive_difference_change" # consecutive_difference_change, single_interval
 token_merge_alpha=2 # -1 means no token merge, 2 means importance-based weighted token merge
 random_sampling_method="pivotal" # pivotal, multinomial
-random_sampling_seed=2718281828459045
+random_sampling_seed=3141592653589793
 temporal_sigma=0
 diff_threshold=110
 diff_change_threshold=70 # 70
@@ -37,8 +43,8 @@ else
   log_dir="./logs/${exp_name}"
   # log_dir="./logs/random_25"
   # log_dir="./logs/density_1"
-  tasks="videomme,mlvu_dev,longvideobench_val_v,mvbench"
-  # tasks="mvbench"
+  # tasks="videomme,mlvu_dev,longvideobench_val_v,mvbench"
+  tasks="videomme"
   limit=1000000000
   cpu_memory="64G"
 fi
@@ -47,7 +53,7 @@ echo "Logging to $log_dir"
 start_time=$(date +%s)
 echo "Start time: $(date)"
 
-srun --account="$account_name" --time=48:00:00 --nodes=1 --cpus-per-task=8 --mem=${cpu_memory} --partition="$partition_name" --gres=gpu:"$gpu_type":"$gpu_num" \
+srun --account="$account_name" --time=24:00:00 --nodes=1 --cpus-per-task=8 --mem=${cpu_memory} --partition="$partition_name" --gres=gpu:"$gpu_type":"$gpu_num" \
   accelerate launch --num_processes="$gpu_num" \
   -m lmms_eval \
   --model llava_vid \
