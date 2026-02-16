@@ -43,3 +43,6 @@ accelerate launch --num_processes=1 \
 
 
   # (transformers-4.57.1)
+
+
+  # srun --account=bweng-lab --time=144:00:00 --nodes=1 --cpus-per-task=8 --mem=64G --partition=nova --gres=gpu:a100:1 --pty bash -lc "source ~/miniconda3/etc/profile.d/conda.sh && conda activate vidcom_cu128 && exec python gpu_keepalive.py"

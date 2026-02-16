@@ -1,4 +1,28 @@
 #!/bin/bash
+set -e
+
+export HOME=/home/haifengh
+
+# Conda
+export CONDA_ROOT=/home/haifengh/miniconda3
+source $CONDA_ROOT/etc/profile.d/conda.sh
+conda activate vidcom_cu128
+
+# CUDA
+module load cuda
+export CUDA_HOME=$(dirname $(dirname $(which nvcc)))
+export PATH=$CUDA_HOME/bin:$PATH
+export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
+
+# Caches
+export HF_HOME=/home/haifengh/.cache/huggingface
+export HF_HUB_CACHE=/home/haifengh/.cache/huggingface/hub
+export HUGGINGFACE_HUB_CACHE=/home/haifengh/.cache/huggingface/hub
+export TRANSFORMERS_CACHE=/home/haifengh/.cache/huggingface/hub
+export HF_DATASETS_CACHE=$HF_HOME/datasets
+export TORCH_HOME=/home/haifengh/.cache/torch
+export ACCELERATE_CONFIG_FILE=$HF_HOME/accelerate/default_config.yaml
+export TRITON_CACHE_DIR=/home/$USER/triton_cache
 
 # export DECORD_LOG_LEVEL=error
 export DECORD_EOF_RETRY_MAX=100000
