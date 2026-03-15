@@ -64,3 +64,5 @@ prunevid_remaining_token_nums.txt
 process_remaining_token_nums.py
 vidcom2_remaining_token_nums.txt
 visionzip_remaining_token_nums.txt
+
+*.pt

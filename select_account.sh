@@ -2,8 +2,8 @@
 set -euo pipefail
 
 declare -A GPU_QUOTA=(
-  ["yangli1-lab"]=15
-  ["bweng-lab"]=5
+  ["yangli1-lab"]=18
+  ["bweng-lab"]=8
 )
 
 ACCOUNTS=("yangli1-lab" "bweng-lab")
