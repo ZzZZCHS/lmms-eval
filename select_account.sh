@@ -8,6 +8,7 @@ declare -A GPU_QUOTA=(
 
 ACCOUNTS=("yangli1-lab" "bweng-lab")
 LONG_JOB_USER="dasante"
+NOVA_THRESHOLD="${NOVA_THRESHOLD:-1.0}"   # best_pressure <= this => use nova
 
 # -----------------------------
 # Helpers
@@ -34,7 +35,7 @@ count_gpus() {
 # Decision Logic
 # -----------------------------
 best_account=""
-best_pressure=999999
+best_pressure="999999"
 
 for acct in "${ACCOUNTS[@]}"; do
     quota=${GPU_QUOTA[$acct]}
@@ -47,19 +48,11 @@ for acct in "${ACCOUNTS[@]}"; do
     effective_quota=$(( quota - dasante_running ))
     effective_running=$(( running_total - dasante_running ))
 
-    # Guard against zero / negative quota
     if (( effective_quota <= 0 )); then
         echo "[DEBUG] $acct skipped: effective_quota=$effective_quota" >&2
         continue
     fi
 
-    # Immediate availability
-    if (( effective_running + queued < effective_quota )); then
-        echo "$acct"
-        exit 0
-    fi
-
-    # Pressure = load / capacity
     pressure=$(awk -v r="$effective_running" -v q="$queued" -v c="$effective_quota" \
         'BEGIN { printf "%.4f", (r+q)/c }')
 
@@ -72,9 +65,22 @@ for acct in "${ACCOUNTS[@]}"; do
       effective_quota=$effective_quota
       pressure=$pressure" >&2
 
-    # Choose lowest pressure
-    awk -v p="$pressure" -v bp="$best_pressure" 'BEGIN { exit !(p < bp) }' \
-        && { best_pressure="$pressure"; best_account="$acct"; }
+    if awk -v p="$pressure" -v bp="$best_pressure" 'BEGIN { exit !(p < bp) }'; then
+        best_pressure="$pressure"
+        best_account="$acct"
+    fi
 done
 
-echo "$best_account"
+if [[ -z "$best_account" ]]; then
+    echo "ERROR: no valid account found" >&2
+    exit 1
+fi
+
+if awk -v p="$best_pressure" -v t="$NOVA_THRESHOLD" 'BEGIN { exit !(p <= t) }'; then
+    best_partition="nova"
+else
+    best_partition="scavenger"
+fi
+
+# output: account pressure partition
+echo "$best_account $best_pressure $best_partition"
