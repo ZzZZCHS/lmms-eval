@@ -18,17 +18,33 @@ count_gpus() {
     local state=$2   # R or PD
     local user=${3:-}
 
-    if [[ -n "$user" ]]; then
-        squeue -A "$acct" -t "$state" -u "$user" -h -o "%b"
+    if [[ "$state" == "PD" ]]; then
+        # For pending jobs, exclude those held by the user.
+        if [[ -n "$user" ]]; then
+            squeue -A "$acct" -t "$state" -u "$user" -h -o "%b|%r"
+        else
+            squeue -A "$acct" -t "$state" -h -o "%b|%r"
+        fi | awk -F'|' '
+            $2 == "JobHeldUser" { next }
+            {
+                match($1, /gpu:[^:]+:([0-9]+)/, m)
+                if (m[1] != "") sum += m[1]
+            }
+            END { print sum+0 }
+        '
     else
-        squeue -A "$acct" -t "$state" -h -o "%b"
-    fi | awk '
-        {
-            match($0, /gpu:[^:]+:([0-9]+)/, m)
-            if (m[1] != "") sum += m[1]
-        }
-        END {print sum+0}
-    '
+        if [[ -n "$user" ]]; then
+            squeue -A "$acct" -t "$state" -u "$user" -h -o "%b"
+        else
+            squeue -A "$acct" -t "$state" -h -o "%b"
+        fi | awk '
+            {
+                match($0, /gpu:[^:]+:([0-9]+)/, m)
+                if (m[1] != "") sum += m[1]
+            }
+            END { print sum+0 }
+        '
+    fi
 }
 
 # -----------------------------
@@ -42,11 +58,12 @@ for acct in "${ACCOUNTS[@]}"; do
 
     running_total=$(count_gpus "$acct" "R")
     queued=$(count_gpus "$acct" "PD")
+    mokarram_running=$(count_gpus "$acct" "R" "mokarram")
     dasante_running=$(count_gpus "$acct" "R" "$LONG_JOB_USER")
 
-    # Remove dasante from consideration
-    effective_quota=$(( quota - dasante_running ))
-    effective_running=$(( running_total - dasante_running ))
+    queued=$(( queued ))
+    effective_quota=$(( quota - dasante_running - mokarram_running ))
+    effective_running=$(( running_total - dasante_running - mokarram_running ))
 
     if (( effective_quota <= 0 )); then
         echo "[DEBUG] $acct skipped: effective_quota=$effective_quota" >&2
@@ -59,7 +76,6 @@ for acct in "${ACCOUNTS[@]}"; do
     echo "[DEBUG] $acct:
       quota=$quota
       running_total=$running_total
-      dasante_running=$dasante_running
       effective_running=$effective_running
       queued=$queued
       effective_quota=$effective_quota

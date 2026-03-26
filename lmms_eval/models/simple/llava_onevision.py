@@ -24,6 +24,8 @@ from lmms_eval.api.model import lmms
 from lmms_eval.api.registry import register_model
 from lmms_eval.models.model_utils.load_video import read_video_pyav
 
+import os
+
 # Suppress warnings
 warnings.filterwarnings("ignore")
 
@@ -488,6 +490,9 @@ class Llava_OneVision(lmms):
                     elif type(visual[0]) == str:  # For video task
                         image_tensor = []
                         try:
+                            if visual[0].endswith('.webm'):
+                                if os.path.exists(visual[0][:-5] + '.mp4'):
+                                    visual[0] = visual[0][:-5] + '.mp4'
                             if self.video_decode_backend == "decord":
                                 frames, frame_idx = self.load_video(visual, self.max_frames_num, return_frame_idx=True)
                             elif self.video_decode_backend == "pyav":
@@ -496,6 +501,7 @@ class Llava_OneVision(lmms):
                             image_tensor.append(frames)
                         except Exception as e:
                             eval_logger.error(f"Error {e} in loading video")
+                            breakpoint()
                             image_tensor = None
 
                         task_type = "video"

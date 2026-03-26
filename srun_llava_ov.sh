@@ -98,7 +98,7 @@ do
   fi
 done
 
-random_sampling_method="pivotal" # pivotal, multinomial, topk, knn
+random_sampling_method="pivotal" # pivotal, multinomial, topk, knn, aug_knn
 # if args has --random_sampling_method, set to that
 for arg in "$@"
 do
@@ -134,6 +134,15 @@ do
   fi
 done
 
+aug_gamma=1.0
+# if args has --aug_gamma, set to that
+for arg in "$@"
+do  
+  if [[ "$arg" == --aug_gamma=* ]]; then
+    aug_gamma="${arg#*=}"
+  fi
+done
+
 do_whitening=false
 # if args has --do_whitening, set do_whitening to true
 for arg in "$@"
@@ -157,14 +166,14 @@ temporal_sigma=0 # 16
 diff_threshold=110
 diff_change_threshold=70 # 70
 diff_change_percent_threshold=0.4 # 0.35
-exp_name="${compression_method}_${interval_separate_method}_${importance_distance_type}_a${importance_a}_sim_thres${consolidation_sim_threshold}_whiten-${do_whitening}_attn_gamma${attn_gamma}_merge-${token_merge_type}-${token_merge_alpha}_${random_sampling_method}_seed${random_sampling_seed}_Tsigma${temporal_sigma}_diff-${diff_threshold}-${diff_change_threshold}-${diff_change_percent_threshold}_keeppos${keep_position_ids}_${base_scale_p}"
+exp_name="${compression_method}_${interval_separate_method}_${importance_distance_type}_a${importance_a}_sim_thres${consolidation_sim_threshold}_whiten-${do_whitening}_attn_gamma${attn_gamma}_aug_gamma${aug_gamma}_merge-${token_merge_type}-${token_merge_alpha}_${random_sampling_method}_seed${random_sampling_seed}_Tsigma${temporal_sigma}_diff-${diff_threshold}-${diff_change_threshold}-${diff_change_percent_threshold}_keeppos${keep_position_ids}_${base_scale_p}"
 model_size="7b" # for 72b
 # exp_name="original"
 
 if [ $debug = true ]; then
   log_dir="./logs_debug/${exp_name}"
   tasks="videomme"
-  limit=100
+  limit=10
   cpu_memory="48G" # 384G for 72b
   srun_time="1:00:00"
 else
@@ -197,7 +206,7 @@ srun --account="$account_name" --time=${srun_time} --nodes=1 --cpus-per-task=8 -
   -m lmms_eval \
   --model llava_onevision \
   --model_args pretrained=lmms-lab/llava-onevision-qwen2-${model_size}-ov,conv_template=qwen_1_5,max_frames_num=${max_frames_num},model_name=llava_qwen,attn_implementation=flash_attention_2 \
-  --gen_kwargs max_new_tokens=16,temperature=0,top_p=1.0,num_beams=1,do_sample=False,base_scale=${base_scale},importance_a=${importance_a},importance_distance_type=${importance_distance_type},interval_separate_method=${interval_separate_method},consolidation_sim_threshold=${consolidation_sim_threshold},token_merge_alpha=${token_merge_alpha},token_merge_type=${token_merge_type},random_sampling_method=${random_sampling_method},random_sampling_seed=${random_sampling_seed},temporal_sigma=${temporal_sigma},diff_threshold=${diff_threshold},diff_change_threshold=${diff_change_threshold},diff_change_percent_threshold=${diff_change_percent_threshold},compression_method=${compression_method},attn_gamma=${attn_gamma},do_whitening=${do_whitening},keep_position_ids=${keep_position_ids} \
+  --gen_kwargs max_new_tokens=256,temperature=0,top_p=1.0,num_beams=1,do_sample=False,base_scale=${base_scale},importance_a=${importance_a},importance_distance_type=${importance_distance_type},interval_separate_method=${interval_separate_method},consolidation_sim_threshold=${consolidation_sim_threshold},token_merge_alpha=${token_merge_alpha},token_merge_type=${token_merge_type},random_sampling_method=${random_sampling_method},random_sampling_seed=${random_sampling_seed},temporal_sigma=${temporal_sigma},diff_threshold=${diff_threshold},diff_change_threshold=${diff_change_threshold},diff_change_percent_threshold=${diff_change_percent_threshold},compression_method=${compression_method},attn_gamma=${attn_gamma},aug_gamma=${aug_gamma},do_whitening=${do_whitening},keep_position_ids=${keep_position_ids} \
   --tasks $tasks \
   --batch_size 1 \
   --log_samples \

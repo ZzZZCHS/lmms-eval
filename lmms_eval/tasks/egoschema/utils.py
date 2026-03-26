@@ -178,7 +178,10 @@ def parse_multi_choice_response(response, all_choices, index2ans):
 # Process result for mcq answer generation
 def egoschema_process_results_generation(doc, result):
     # import pdb;pdb.set_trace()
-    pred = result[0]
+    if result[-1] == "add_outputs":
+        pred = result[0][0]
+    else:
+        pred = result[0]
 
     index2ans, all_choices = get_multi_choice_info(doc)
     parsed_pred, matched_tag = parse_multi_choice_response(pred, all_choices, index2ans)

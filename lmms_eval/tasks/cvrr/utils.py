@@ -26,9 +26,9 @@ with open(Path(__file__).parent / "_default_template_yaml", "r") as f:
 
     config = yaml.safe_load("".join(safe_data))
 
-NUM_SECONDS_TO_SLEEP = 5
+NUM_SECONDS_TO_SLEEP = 2
 
-GPT_EVAL_MODEL_NAME = os.getenv("MODEL_VERSION", "gpt-4o-2024-11-20")
+GPT_EVAL_MODEL_NAME = os.getenv("MODEL_VERSION", "gpt-4.1-nano")
 
 API_TYPE = os.getenv("API_TYPE", "openai")
 
@@ -104,7 +104,7 @@ def cvrr_doc_to_answer(doc):
     return doc["A"]
 
 
-def get_gpt_eval(question, answer, pred, max_tokens: int, retries: int = 5):
+def get_gpt_eval(question, answer, pred, max_tokens: int, retries: int = 100):
     global headers
 
     messages = [
@@ -160,7 +160,7 @@ def get_gpt_eval(question, answer, pred, max_tokens: int, retries: int = 5):
 
         # Handle other unexpected errors
         if attempt < retries - 1:
-            time.sleep(NUM_SECONDS_TO_SLEEP)
+            time.sleep(NUM_SECONDS_TO_SLEEP ** (attempt + 1))
         else:  # If this was the last attempt, log and return empty
             eval_logger.error(f"All {retries} attempts failed. Last error message: {e}")
             return "", ""
@@ -200,7 +200,10 @@ def cvrr_process_results(doc, result):
     try:
         question = doc["Q"]
         answer = doc["A"]
-        pred = result[0]
+        if result[-1] == "add_outputs":
+            pred = result[0][0]
+        else:
+            pred = result[0]
 
         # Assume get_gpt_eval returns a review and the model name, and parse_score parses this review
         review, model_name = get_gpt_eval(question, answer, pred, 512)

@@ -148,7 +148,10 @@ def videommmu_doc_to_answer(doc):
 
 # process results for each individual instance
 def videommmu_process_results(doc, results):
-    pred = results[0]
+    if results[-1] == 'add_outputs':
+        pred = results[0][0]
+    else:
+        pred = results[0]
 
     question_type = doc.get("question_type", "None")
     if question_type == "multiple-choice":

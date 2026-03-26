@@ -29,11 +29,26 @@ export DECORD_EOF_RETRY_MAX=100000
 export OMP_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 
-# account_name="class-faculty" # yangli1-lab, bweng-lab
-account_name=$(./select_account.sh)
-echo "Selected account: $account_name"
 
-partition_name="nova" # nova, interactive, scavenger(h200)
+# account_name="bweng-lab" # yangli1-lab, bweng-lab, class-faculty
+# account_name / best_pressure / partition_name decided automatically
+read -r account_name best_pressure partition_name < <(./select_account.sh)
+# partition_name="scavenger" # nova, interactive, scavenger(h200), instruction
+
+# allow manual override
+for arg in "$@"; do
+  if [[ "$arg" == --account=* ]]; then
+    account_name="${arg#*=}"
+  fi
+  if [[ "$arg" == --partition=* ]]; then
+    partition_name="${arg#*=}"
+  fi
+done
+
+echo "Selected account: $account_name"
+echo "Best pressure: $best_pressure"
+echo "Selected partition: $partition_name"
+
 gpu_type="a100" # a100, h200, l40s
 gpu_num=1 # 4 for 72b
 
@@ -41,30 +56,34 @@ gpu_num=1 # 4 for 72b
 # before assigning to compression_method, check if $1 is in the allowed list, exit if not
 # original, random, interval, vidcom2, fastvid, prunevid, dycoke
 allowed_methods=("original" "random" "interval" "vidcom2" "fastvid" "prunevid" "dycoke" "fastv" "visionzip")
-if [ -z "$1" ]; then
-  echo "No compression_method argument supplied. Using default compression_method=original"
-  compression_method="original"
-else
-  compression_method="$1"
-  if [[ ! " ${allowed_methods[@]} " =~ " ${compression_method} " ]]; then
-    echo "Error: compression_method '$compression_method' is not in the allowed list: ${allowed_methods[*]}"
-    exit 1
-  fi
-fi
 
-# if has $2, assign to base_scale, else default to 1.0
-if [ -z "$2" ]; then
-  echo "No base_scale argument supplied. Using default base_scale=1.0"
-  base_scale=1.0
-else
-  base_scale=$2
-fi
+# if has --compression_method flag, assign to compression_method, else default to "original"
+compression_method="original"
+for arg in "$@"; do
+  if [[ "$arg" == --compression_method=* ]]; then
+    compression_method="${arg#--compression_method=}"
+    if [[ ! " ${allowed_methods[@]} " =~ " ${compression_method} " ]]; then
+      echo "Error: compression_method '$compression_method' is not in the allowed list: ${allowed_methods[*]}"
+      exit 1
+    fi
+  fi
+done
+
+# if has --base_scale flag, assign to base_scale, else default to 1.0
+base_scale=1.0
+for arg in "$@"; do
+  if [[ "$arg" == --base_scale=* ]]; then
+    base_scale="${arg#--base_scale=}"
+  fi
+done
 
 model_size="7b"
-# if has $3, assign to model_size, else default to 7b
-if [ -n "$3" ]; then
-  model_size="$3"
-fi
+# if has --model_size flag, assign to model_size, else default to 7b
+for arg in "$@"; do
+  if [[ "$arg" == --model_size=* ]]; then
+    model_size="${arg#--model_size=}"
+  fi
+done
 
 # if has --debug flag, assign to debug, else default to false
 # if has --fastv_R=xxx flag, assign to fastv_R
@@ -90,8 +109,9 @@ fi
 if [ $debug = true ]; then
   log_dir="./logs_debug/${exp_name}"
   tasks="videomme"
-  limit=1000
+  limit=10
   cpu_memory="64G" # 384G for 72b
+  srun_time="1:00:00"
 else
   log_dir="./logs/${exp_name}"
   # log_dir="./logs/random_25"
@@ -101,18 +121,27 @@ else
   tasks="videomme"
   limit=1000000000
   cpu_memory="64G" # 384G for 72b
+  srun_time="24:00:00" # for 72b
 fi
 echo "Logging to $log_dir"
+
+# if --tasks is passed in args, set tasks to that
+for arg in "$@"
+do
+  if [[ "$arg" == --tasks=* ]]; then
+    tasks="${arg#*=}"
+  fi
+done
 
 start_time=$(date +%s)
 echo "Start time: $(date)"
 
-srun --account="$account_name" --time=24:00:00 --nodes=1 --cpus-per-task=8 --mem=${cpu_memory} --partition="$partition_name" --gres=gpu:"$gpu_type":"$gpu_num" \
+srun --account="$account_name" --time=$srun_time --nodes=1 --cpus-per-task=8 --mem=${cpu_memory} --partition="$partition_name" --gres=gpu:"$gpu_type":"$gpu_num" \
   accelerate launch --num_processes="$gpu_num" \
   -m lmms_eval \
   --model llava_onevision \
   --model_args pretrained=lmms-lab/llava-onevision-qwen2-${model_size}-ov,conv_template=qwen_1_5,model_name=llava_qwen,attn_implementation=flash_attention_2 \
-  --gen_kwargs max_new_tokens=16,temperature=0,top_p=1.0,num_beams=1,do_sample=False,base_scale=${base_scale},compression_method=${compression_method},fastv_R=${fastv_R} \
+  --gen_kwargs max_new_tokens=256,temperature=0,top_p=1.0,num_beams=1,do_sample=False,base_scale=${base_scale},compression_method=${compression_method},fastv_R=${fastv_R} \
   --tasks $tasks \
   --batch_size 1 \
   --log_samples \

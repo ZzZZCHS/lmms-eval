@@ -54,7 +54,7 @@ def videoevalpro_doc_to_text(doc, lmms_eval_specific_kwargs=None):
 
 class GPT4oJudge:
     def __init__(self, model_name="gpt-4o-2024-11-20") -> None:
-        self.model_name = model_name
+        self.model_name = "gpt-4.1-nano"
         self.client = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
     def __call__(self, question: str, target: str, predicted_answer: str) -> bool:
@@ -84,7 +84,7 @@ def safe_judge_with_retry(model, question, gt, pred, max_retries=10, delay=2):
             return model(question, gt, pred)
         except Exception as e:
             print(f"Attempt {attempt + 1} failed: {e}")
-            time.sleep(delay)
+            time.sleep(delay ** (attempt + 1))
     print(f"All {max_retries} attempts failed.")
     return {"correct": False, "reason": "Failed after multiple retries"}
 
@@ -104,10 +104,13 @@ def videoevalpro_process_results(doc, results):
     question = safe_strip(doc.get("question", ""))
     text_gt = safe_strip(doc.get("answer_text", ""))
     task_type = safe_strip(doc.get("qa_type", ""))
-    pred_ans = results[0]
+    if results[-1] == "add_outputs":
+        pred_ans = results[0][0]
+    else:
+        pred_ans = results[0]
 
     model = GPT4oJudge()
-    judge_result = safe_judge_with_retry(model, question, text_gt, pred_ans, max_retries=10, delay=2)
+    judge_result = safe_judge_with_retry(model, question, text_gt, pred_ans, max_retries=100, delay=2)
 
     data_dict = {"question": question, "task_type": task_type, "text_gt": text_gt, "pred_ans": pred_ans, "judge_result": judge_result}
 
