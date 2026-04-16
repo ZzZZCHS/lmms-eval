@@ -21,6 +21,8 @@ try:
 except ImportError:
     eval_logger.warning("Failed to import qwen_vl_utils; Please install it via `pip install qwen-vl-utils`")
 
+import torch
+
 
 @register_model("qwen3_vl_chat")
 class Qwen3_VL(Qwen3_VLSimple):
@@ -42,102 +44,118 @@ class Qwen3_VL(Qwen3_VLSimple):
         pbar = tqdm(total=num_iters, disable=(self.rank != 0), desc="Model Responding")
         e2e_latency = 0
         total_tokens = 0
-        for chunk in chunks:
-            ctx, doc_to_messages, all_gen_kwargs, doc_id, task, split = zip(*chunk)
-            chat_messages = [doc_to_messages[idx](self.task_dict[task][split][ids]) for idx, (ids, task, split) in enumerate(zip(doc_id, task, split))]
-            chat_messages: List[ChatMessages] = [ChatMessages(**{"messages": message}) for message in chat_messages]
-            visuals = []
-            videos = []
-            for messages in chat_messages:
-                visual, video, _ = messages.extract_media()
-                visuals.append(visual)
-                videos.append(video)
-            visuals = self.flatten(visuals)
-            videos = self.flatten(videos)
-            gen_kwargs = all_gen_kwargs[0]
+        with torch.profiler.profile(
+            activities=[
+                torch.profiler.ProfilerActivity.CPU,
+                torch.profiler.ProfilerActivity.CUDA,
+            ],
+            schedule=torch.profiler.schedule(wait=2, warmup=2, active=30, repeat=1),
+            record_shapes=False,
+            with_stack=False,
+            profile_memory=False
+        ) as prof:
+            for chunk in chunks:
+                ctx, doc_to_messages, all_gen_kwargs, doc_id, task, split = zip(*chunk)
+                chat_messages = [doc_to_messages[idx](self.task_dict[task][split][ids]) for idx, (ids, task, split) in enumerate(zip(doc_id, task, split))]
+                chat_messages: List[ChatMessages] = [ChatMessages(**{"messages": message}) for message in chat_messages]
+                visuals = []
+                videos = []
+                for messages in chat_messages:
+                    visual, video, _ = messages.extract_media()
+                    visuals.append(visual)
+                    videos.append(video)
+                visuals = self.flatten(visuals)
+                videos = self.flatten(videos)
+                gen_kwargs = all_gen_kwargs[0]
 
-            # Apply chat template
-            video_kwargs = {
-                "max_pixels": self.max_pixels,
-                "min_pixels": self.min_pixels,
-            }
-            if self.fps is not None:
-                video_kwargs["fps"] = self.fps
-                # limit the number of frames in case fps is set
-                video_kwargs["max_frames"] = self.max_num_frames
-            else:
-                video_kwargs["nframes"] = self.max_num_frames
-            batched_messages = [chat_message.to_hf_messages(video_kwargs=video_kwargs) for chat_message in chat_messages]
-            texts = self.processor.apply_chat_template(batched_messages, tokenize=False, add_generation_prompt=True)
-            image_inputs, video_inputs, video_kwargs_qwen = process_vision_info(batched_messages, return_video_kwargs=True, image_patch_size=16, return_video_metadata=True)
-            video_kwargs = {**video_kwargs, **video_kwargs_qwen}
+                # Apply chat template
+                video_kwargs = {
+                    "max_pixels": self.max_pixels,
+                    "min_pixels": self.min_pixels,
+                }
+                if self.fps is not None:
+                    video_kwargs["fps"] = self.fps
+                    # limit the number of frames in case fps is set
+                    video_kwargs["max_frames"] = self.max_num_frames
+                else:
+                    video_kwargs["nframes"] = self.max_num_frames
+                batched_messages = [chat_message.to_hf_messages(video_kwargs=video_kwargs) for chat_message in chat_messages]
+                texts = self.processor.apply_chat_template(batched_messages, tokenize=False, add_generation_prompt=True)
+                image_inputs, video_inputs, video_kwargs_qwen = process_vision_info(batched_messages, return_video_kwargs=True, image_patch_size=16, return_video_metadata=True)
+                video_kwargs = {**video_kwargs, **video_kwargs_qwen}
 
-            video_metadatas = None
-            if video_inputs is not None:
-                video_inputs, video_metadatas = zip(*video_inputs)
-                video_inputs, video_metadatas = list(video_inputs), list(video_metadatas)
+                video_metadatas = None
+                if video_inputs is not None:
+                    video_inputs, video_metadatas = zip(*video_inputs)
+                    video_inputs, video_metadatas = list(video_inputs), list(video_metadatas)
+                
 
-            if self.batch_size > 1:
-                inputs = self.processor(text=texts, images=image_inputs, videos=video_inputs, video_metadata=video_metadatas, **video_kwargs, do_resize=False, padding=True, padding_side="left", return_tensors="pt")
-            else:
-                inputs = self.processor(text=texts, images=image_inputs, videos=video_inputs, video_metadata=video_metadatas, **video_kwargs, do_resize=False, return_tensors="pt")
+                if self.batch_size > 1:
+                    inputs = self.processor(text=texts, images=image_inputs, videos=video_inputs, video_metadata=video_metadatas, **video_kwargs, do_resize=False, padding=True, padding_side="left", return_tensors="pt")
+                else:
+                    inputs = self.processor(text=texts, images=image_inputs, videos=video_inputs, video_metadata=video_metadatas, **video_kwargs, do_resize=False, return_tensors="pt")
 
-            if self.device_map == "auto":
-                inputs = inputs.to("cuda")
-            else:
-                inputs = inputs.to(self.device)
+                if self.device_map == "auto":
+                    inputs = inputs.to("cuda")
+                else:
+                    inputs = inputs.to(self.device)
 
-            # Set default generation kwargs
-            default_gen_kwargs = {
-                "max_new_tokens": 128,
-                "temperature": 0.0,  # Set to 0 for greedy default
-                "top_p": None,
-                "num_beams": 1,
-            }
-            # Update with provided kwargs
-            current_gen_kwargs = {**default_gen_kwargs, **gen_kwargs}
-            pad_token_id = self.tokenizer.pad_token_id
+                # Set default generation kwargs
+                default_gen_kwargs = {
+                    "max_new_tokens": 128,
+                    "temperature": 0.0,  # Set to 0 for greedy default
+                    "top_p": None,
+                    "num_beams": 1,
+                }
+                # Update with provided kwargs
+                current_gen_kwargs = {**default_gen_kwargs, **gen_kwargs}
+                pad_token_id = self.tokenizer.pad_token_id
 
-            if current_gen_kwargs["temperature"] > 0:
-                current_gen_kwargs["do_sample"] = True
-            else:
-                current_gen_kwargs["do_sample"] = False
-                current_gen_kwargs["temperature"] = None
-                current_gen_kwargs["top_p"] = None
-                current_gen_kwargs["top_k"] = None
+                if current_gen_kwargs["temperature"] > 0:
+                    current_gen_kwargs["do_sample"] = True
+                else:
+                    current_gen_kwargs["do_sample"] = False
+                    current_gen_kwargs["temperature"] = None
+                    current_gen_kwargs["top_p"] = None
+                    current_gen_kwargs["top_k"] = None
 
-            start_time = time.time()
-            cont = self.model.generate(
-                **inputs,
-                eos_token_id=self.tokenizer.eos_token_id,
-                pad_token_id=pad_token_id,
-                do_sample=current_gen_kwargs["do_sample"],
-                temperature=current_gen_kwargs["temperature"],
-                top_p=current_gen_kwargs["top_p"],
-                num_beams=current_gen_kwargs["num_beams"],
-                max_new_tokens=current_gen_kwargs["max_new_tokens"],
-                top_k=current_gen_kwargs.get("top_k", None),
-                use_cache=self.use_cache,
-            )
-            end_time = time.time()
+                start_time = time.time()
+                cont = self.model.generate(
+                    **inputs,
+                    eos_token_id=self.tokenizer.eos_token_id, 
+                    pad_token_id=pad_token_id,
+                    do_sample=current_gen_kwargs["do_sample"],
+                    temperature=current_gen_kwargs["temperature"],
+                    top_p=current_gen_kwargs["top_p"],
+                    num_beams=current_gen_kwargs["num_beams"],
+                    max_new_tokens=current_gen_kwargs["max_new_tokens"],
+                    top_k=current_gen_kwargs.get("top_k", None),
+                    use_cache=self.use_cache,
+                )
+                end_time = time.time()
+                
+                prof.step()
 
-            generated_ids_trimmed = [out_ids[len(in_ids) :] for in_ids, out_ids in zip(inputs.input_ids, cont)]
-            answers = self.processor.batch_decode(generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+                generated_ids_trimmed = [out_ids[len(in_ids) :] for in_ids, out_ids in zip(inputs.input_ids, cont)]
+                answers = self.processor.batch_decode(generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False)
 
-            # Calculate timing metrics for batch
-            e2e_latency += end_time - start_time
-            total_tokens += sum(len(ids) for ids in generated_ids_trimmed)
+                # Calculate timing metrics for batch
+                e2e_latency += end_time - start_time
+                total_tokens += sum(len(ids) for ids in generated_ids_trimmed)
 
-            for ans, context in zip(answers, texts):
-                clean_ans = parse_reasoning_model_answer(ans)
-                res.append(clean_ans)
-                self.cache_hook.add_partial("generate_until", (context, gen_kwargs), clean_ans)
-                pbar.update(1)
+                for ans, context in zip(answers, texts):
+                    clean_ans = parse_reasoning_model_answer(ans)
+                    res.append(clean_ans)
+                    self.cache_hook.add_partial("generate_until", (context, gen_kwargs), clean_ans)
+                    pbar.update(1)
 
-                eval_logger.debug(f"Question: {context}")
-                eval_logger.debug(f"Model Raw Response: {ans}")
-                eval_logger.debug(f"Model Clean Response: {clean_ans}")
-            # reorder this group of results back to original unsorted form
+                    eval_logger.debug(f"Question: {context}")
+                    eval_logger.debug(f"Model Raw Response: {ans}")
+                    eval_logger.debug(f"Model Clean Response: {clean_ans}")
+                # reorder this group of results back to original unsorted form
+        
+        print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=50))
+        print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=50))
         res = re_ords.get_original(res)
 
         # Calculate average speed

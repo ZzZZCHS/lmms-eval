@@ -173,7 +173,7 @@ model_size="7b" # for 72b
 if [ $debug = true ]; then
   log_dir="./logs_debug/${exp_name}"
   tasks="videomme"
-  limit=10
+  limit=100
   cpu_memory="48G" # 384G for 72b
   srun_time="1:00:00"
 else
@@ -201,12 +201,12 @@ start_time=$(date +%s)
 echo "Start time: $(date)"
 
 set +e
-srun --account="$account_name" --time=${srun_time} --nodes=1 --cpus-per-task=8 --mem=${cpu_memory} --partition="$partition_name" --gres=gpu:"$gpu_type":"$gpu_num" \
+srun --account="$account_name" --time=${srun_time} --nodes=1 --cpus-per-task=8 --mem=${cpu_memory} --partition="$partition_name" --gres=gpu:"$gpu_type":"$gpu_num" --exclude="nova21-gpu-2" \
   accelerate launch --num_processes=${gpu_num} \
   -m lmms_eval \
   --model llava_onevision \
   --model_args pretrained=lmms-lab/llava-onevision-qwen2-${model_size}-ov,conv_template=qwen_1_5,max_frames_num=${max_frames_num},model_name=llava_qwen,attn_implementation=flash_attention_2 \
-  --gen_kwargs max_new_tokens=256,temperature=0,top_p=1.0,num_beams=1,do_sample=False,base_scale=${base_scale},importance_a=${importance_a},importance_distance_type=${importance_distance_type},interval_separate_method=${interval_separate_method},consolidation_sim_threshold=${consolidation_sim_threshold},token_merge_alpha=${token_merge_alpha},token_merge_type=${token_merge_type},random_sampling_method=${random_sampling_method},random_sampling_seed=${random_sampling_seed},temporal_sigma=${temporal_sigma},diff_threshold=${diff_threshold},diff_change_threshold=${diff_change_threshold},diff_change_percent_threshold=${diff_change_percent_threshold},compression_method=${compression_method},attn_gamma=${attn_gamma},aug_gamma=${aug_gamma},do_whitening=${do_whitening},keep_position_ids=${keep_position_ids} \
+  --gen_kwargs max_new_tokens=16,temperature=0,top_p=1.0,num_beams=1,do_sample=False,base_scale=${base_scale},importance_a=${importance_a},importance_distance_type=${importance_distance_type},interval_separate_method=${interval_separate_method},consolidation_sim_threshold=${consolidation_sim_threshold},token_merge_alpha=${token_merge_alpha},token_merge_type=${token_merge_type},random_sampling_method=${random_sampling_method},random_sampling_seed=${random_sampling_seed},temporal_sigma=${temporal_sigma},diff_threshold=${diff_threshold},diff_change_threshold=${diff_change_threshold},diff_change_percent_threshold=${diff_change_percent_threshold},compression_method=${compression_method},attn_gamma=${attn_gamma},aug_gamma=${aug_gamma},do_whitening=${do_whitening},keep_position_ids=${keep_position_ids} \
   --tasks $tasks \
   --batch_size 1 \
   --log_samples \
